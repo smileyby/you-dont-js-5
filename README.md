@@ -482,6 +482,159 @@ foo.identify(); // FOO MODULE
 
 通过在模块实例的内部保留对公共API对象的内部引用，可以从内部对模块实例进行修改，包括添加或删除方法和属性，以及修改他们的值。
 
+### 5.5.1 现代的模块机制
+
+大多数模块依赖加载器/管理器本质上都是将这种模块定义封装进一个友好的API。这里并不会研究某个具体的库，为了宏观了解我会简单地介绍一些核心概念：
+
+```js
+
+var MyModules = (function Manager() {
+	var modules = {};
+	
+	function define(name, deps, impl) {
+		for (var i = 0; i < deps.length; i += 1){
+			deps[i] = modules[deps[i]];
+		}
+	
+		modules[name] = impl.apple( imp, deps );
+	}
+
+	function get(name) {
+		return modules[name];
+	}
+
+	return {
+		define: define,
+		get: get
+	};
+})();
+
+```
+
+这段代码的核心是modules[name] = impl.apple(impl, deps)。为了模块的定义引入了包装函数（可以传入任何依赖），并且将返回值，也就是模块的API，存储在一个根据名字来管理模块列表中。
+
+下面展示了如何使用它来定义模块：
+
+```js
+
+MyModules.define("bar", [], function(){
+	function hello(who) {
+		return "	Let me introduce:" + who
+	}
+	
+	return {
+		hello: hello
+	};
+});
+
+MyModules.define("foo", ["bar"], function(bar) {
+	var hungry = "hippo";
+
+	function awesome() {
+		console.log( bar.hello( hungry ).toUpperCase() )
+	}
+
+	return {
+		awesome: awsome
+	};
+});
+
+var bar = MyModule.get("bar");
+var foo = MyModules.get("foo");
+
+console.log(
+	bar.hello("hippo")
+); // Let me introduce: hippo
+
+foo.awsome(); // LET ME INTERDUCE: HIPPO
+
+```
+
+foo和bar模块都是通过一个返回公共API的函数来定义的。foo甚至接受bar的示例作为依赖参数，并能相应地使用它。
+
+为了我们自己着想，应该多花一点时间来研究这些示例代码并完全理解闭包的作用吧。最重要的是理解模块管理器没有任何特殊的“魔力”。它们符合前面列出的模块模式的连个特点：为了函数定义引入包装函数，并保证它的返回值和模块的API保持一致。
+
+换句话说，模块就是模块，计时在它们外层加上一个友好的包装工具也不会发生任何变化。
+
+### 5.5.2 未来的模块机制
+
+ES6中为模块增加了一级语法支持。但通过模块系统进行加载时，ES6会将文件单做独立的模块来处理。每个模块都可以导入其他模块或特定的API成员，同样也可以到处自己的API成员。
+
+**基于函数的模块并不是一个能被稳定识别的模式（编译器无法识别），它们的API语义只有在运行时才会被考虑进来。因此可以运行时修改一个模块的API（参考前面关于公共API的讨论）。**
+
+**相比之下，ES6模块API更加稳定（API不会在运行时改变）。由于编辑器知道这一点，因此可以在（的确也这样做了）编译期检查对导入模块的API成员的引用是否真实存在。如果API引用并不存在，编译期会在运行时跑出一个或多个“早期”错误，而不会像往常一样在运行期间采用动态的解决方案。**
+
+ES6的模块没有“行内”格式，必须被定义在独立的文件中（一个文件一个模块）。浏览器或引擎有一个默认的“模块加载器”（可以被重载，但这远超出我们的讨论范围）可以在导入模块时异步地加载模块文件。
+
+考虑一下代码：
+
+bar.js
+
+```js
+
+function hello(who) {
+	return "Let me introduce: " + who;
+}
+
+export hello
+
+```
+
+foo.js
+
+```js
+
+// 仅从bar模块导入hello()
+import hello form "bar"
+var hungry = "hippo";
+
+function awsome() {
+	console.log(
+		hello( hungry ).toUpperCase()
+	);
+}
+
+export awsome;
+
+```
+
+baz.js
+
+```js
+
+// 导入完整的foo和bar模块
+
+module foo from "foo";
+module bar from "bar";
+
+console.log(
+	bar.hello( "rhino" )
+); // Let me introduce: rhino
+
+foo.awsome(); // LET ME INTRODUCE: HIPPO
+
+```
+
+**需要用前面两个代码片段中的内容分别创建文件foo.js和bar.js。然后如第三个代码片段展示的那样，bar.js中的程序会加载或导入这两个模块并使用它们。**
+
+import可以将一个模块中的一个或多个API导入到当前作用域中，分别绑定在一个变量上（在我们的例子里是hello）。module会将整个模块的API导入并绑定到一个变量上（在我们的例子里是foo和bar）。export会将当前模块的一个标识符（变量，函数）导出为公共API。这些操作可以在模块中根据需要使用人多次。
+
+模块文件中的内容会被当作好像包含在作用域闭包中一样处理，就和前面介绍的函数闭包模块一样。
+
+## 5.6 小结
+
+闭包就好像从JavaScript中分离出来的一个充满神秘色彩的未开化世界，只有勇敢的人才能够到达那里。但实际上它只是一个标准，显然就是关于如何在函数作为值按需传递的词法环境中书写代码的。
+
+当函数可以记住并访问所在的此法作用于，计时函数在当前词法作用域之外执行，这时就产生了闭包。
+
+如果没能认出闭包，也不能了解它的工作原理，在使用它的过程中就很容易犯错，比如在循环中。但同时闭包也是一个非常强大的工具，可以用多种形式来实现模块等模式。
+
+模块有两个主要的特征：（1）为了创建内部作用域而调用一个包装函数；（2）包装函数的返回值至少包括一对内部函数的引用，这样就会创建涵盖整个内部作用域的闭包。
+
+现在我们会发现代码中到处都是闭包存在，并且我们能够识别闭包然后用他们来做一些拥有的事！
+
+
+
 
 
 
